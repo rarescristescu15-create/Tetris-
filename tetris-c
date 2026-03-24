@@ -1,1 +1,126 @@
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <conio.h>  // for _kbhit() and _getch()
+#include <windows.h>
+
+#define WIDTH 10
+#define HEIGHT 20
+
+int board[HEIGHT][WIDTH] = {0};
+
+// Simple square block (2x2)
+int block[2][2] = {
+    {1, 1},
+    {1, 1}
+};
+
+int blockX = WIDTH / 2 - 1;
+int blockY = 0;
+
+// Draw the board
+void draw() {
+    system("cls");
+
+    for (int i = 0; i < HEIGHT; i++) {
+        for (int j = 0; j < WIDTH; j++) {
+            int filled = board[i][j];
+
+            // Draw falling block
+            if (i >= blockY && i < blockY + 2 &&
+                j >= blockX && j < blockX + 2) {
+                if (block[i - blockY][j - blockX])
+                    filled = 1;
+            }
+
+            printf(filled ? "[]" : " .");
+        }
+        printf("\n");
+    }
+}
+
+// Check collision
+int collision(int newX, int newY) {
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+            if (block[i][j]) {
+                int x = newX + j;
+                int y = newY + i;
+
+                if (x < 0 || x >= WIDTH || y >= HEIGHT)
+                    return 1;
+
+                if (y >= 0 && board[y][x])
+                    return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+// Fix block to board
+void placeBlock() {
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+            if (block[i][j]) {
+                board[blockY + i][blockX + j] = 1;
+            }
+        }
+    }
+}
+
+// Clear full lines
+void clearLines() {
+    for (int i = 0; i < HEIGHT; i++) {
+        int full = 1;
+        for (int j = 0; j < WIDTH; j++) {
+            if (!board[i][j]) {
+                full = 0;
+                break;
+            }
+        }
+
+        if (full) {
+            for (int k = i; k > 0; k--) {
+                for (int j = 0; j < WIDTH; j++) {
+                    board[k][j] = board[k - 1][j];
+                }
+            }
+        }
+    }
+}
+
+int main() {
+    while (1) {
+        draw();
+        Sleep(300);
+
+        // Input
+        if (_kbhit()) {
+            char key = _getch();
+            if (key == 'a' && !collision(blockX - 1, blockY))
+                blockX--;
+            if (key == 'd' && !collision(blockX + 1, blockY))
+                blockX++;
+            if (key == 's' && !collision(blockX, blockY + 1))
+                blockY++;
+        }
+
+        // Move down
+        if (!collision(blockX, blockY + 1)) {
+            blockY++;
+        } else {
+            placeBlock();
+            clearLines();
+            blockX = WIDTH / 2 - 1;
+            blockY = 0;
+
+            if (collision(blockX, blockY)) {
+                printf("Game Over!\n");
+                break;
+            }
+        }
+    }
+
+    return 0;
+}
