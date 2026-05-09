@@ -9,7 +9,7 @@ This project implements a simple version of the classic Tetris game using C.
 - Score system
 
 ## Special Rule
-If the player reaches 5000 points, they can remove one square from a piece to avoid losing.
+If the player reaches 500 points, they can remove one square from a piece to avoid losing.
 
 ## Controls
 - A → move left
