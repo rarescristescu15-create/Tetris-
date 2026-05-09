@@ -1,56 +1,100 @@
-
 #include <stdio.h>
 #include <stdlib.h>
-#include <conio.h>  // for _kbhit() and _getch()
-#include <windows.h>
+#include <unistd.h>
+#include <termios.h>
+#include <fcntl.h>
+#include <time.h>
 
 #define WIDTH 10
 #define HEIGHT 20
 
 int board[HEIGHT][WIDTH] = {0};
-
-// Simple square block (2x2)
-int block[2][2] = {
-    {1, 1},
-    {1, 1}
+int score = 0;
+int secondChanceUsed = 0; //regula adaugata
+// Tetrominoes (7 pieces)
+int pieces[7][4][4] = {
+    // I
+    {
+        {0,0,0,0},
+        {1,1,1,1},
+        {0,0,0,0},
+        {0,0,0,0}
+    },
+    // O
+    {
+        {0,1,1,0},
+        {0,1,1,0},
+        {0,0,0,0},
+        {0,0,0,0}
+    },
+    // T
+    {
+        {0,1,0,0},
+        {1,1,1,0},
+        {0,0,0,0},
+        {0,0,0,0}
+    },
+    // L
+    {
+        {0,0,1,0},
+        {1,1,1,0},
+        {0,0,0,0},
+        {0,0,0,0}
+    },
+    // J
+    {
+        {1,0,0,0},
+        {1,1,1,0},
+        {0,0,0,0},
+        {0,0,0,0}
+    },
+    // S
+    {
+        {0,1,1,0},
+        {1,1,0,0},
+        {0,0,0,0},
+        {0,0,0,0}
+    },
+    // Z
+    {
+        {1,1,0,0},
+        {0,1,1,0},
+        {0,0,0,0},
+        {0,0,0,0}
+    }
 };
 
-int blockX = WIDTH / 2 - 1;
-int blockY = 0;
+int current[4][4];
+int currentX, currentY;
 
-// Draw the board
-void draw() {
-    system("cls");
-
-    for (int i = 0; i < HEIGHT; i++) {
-        for (int j = 0; j < WIDTH; j++) {
-            int filled = board[i][j];
-
-            // Draw falling block
-            if (i >= blockY && i < blockY + 2 &&
-                j >= blockX && j < blockX + 2) {
-                if (block[i - blockY][j - blockX])
-                    filled = 1;
-            }
-
-            printf(filled ? "[]" : " .");
-        }
-        printf("\n");
-    }
+void clearScreen() {
+    printf("\033[H\033[J");
 }
 
-// Check collision
-int collision(int newX, int newY) {
-    for (int i = 0; i < 2; i++) {
-        for (int j = 0; j < 2; j++) {
-            if (block[i][j]) {
-                int x = newX + j;
-                int y = newY + i;
+void copyPiece(int index) {
+    for(int i=0;i<4;i++)
+        for(int j=0;j<4;j++)
+            current[i][j] = pieces[index][i][j];
+}
 
-                if (x < 0 || x >= WIDTH || y >= HEIGHT)
+void spawnPiece() {
+    int p = rand() % 7;
+    copyPiece(p);
+    currentX = WIDTH / 2 - 2;
+    currentY = 0;
+}
+
+int collision(int x, int y, int piece[4][4]) {
+    for(int i=0;i<4;i++) {
+        for(int j=0;j<4;j++) {
+            if(piece[i][j]) {
+                int newX = x + j;
+                int newY = y + i;
+
+                if(newX < 0 || newX >= WIDTH || newY >= HEIGHT)
                     return 1;
 
-                if (y >= 0 && board[y][x])
+                if(newY >= 0 && board[newY][newX])
                     return 1;
             }
         }
@@ -58,69 +102,212 @@ int collision(int newX, int newY) {
     return 0;
 }
 
-// Fix block to board
-void placeBlock() {
-    for (int i = 0; i < 2; i++) {
-        for (int j = 0; j < 2; j++) {
-            if (block[i][j]) {
-                board[blockY + i][blockX + j] = 1;
+void placePiece() {
+    for(int i=0;i<4;i++) {
+        for(int j=0;j<4;j++) {
+            if(current[i][j]) {
+                board[currentY+i][currentX+j] = 1;
             }
         }
     }
 }
 
-// Clear full lines
 void clearLines() {
-    for (int i = 0; i < HEIGHT; i++) {
+    for(int i=HEIGHT-1;i>=0;i--) {
         int full = 1;
-        for (int j = 0; j < WIDTH; j++) {
-            if (!board[i][j]) {
+
+        for(int j=0;j<WIDTH;j++) {
+            if(board[i][j] == 0) {
                 full = 0;
                 break;
             }
         }
 
-        if (full) {
-            for (int k = i; k > 0; k--) {
-                for (int j = 0; j < WIDTH; j++) {
-                    board[k][j] = board[k - 1][j];
+        if(full) {
+            score += 100;
+
+            for(int k=i;k>0;k--) {
+                for(int j=0;j<WIDTH;j++) {
+                    board[k][j] = board[k-1][j];
                 }
             }
+
+            for(int j=0;j<WIDTH;j++)
+                board[0][j] = 0;
+
+            i++;
         }
     }
 }
 
-int main() {
-    while (1) {
-        draw();
-        Sleep(300);
+void rotatePiece() {
+    int rotated[4][4] = {0};
 
-        // Input
-        if (_kbhit()) {
-            char key = _getch();
-            if (key == 'a' && !collision(blockX - 1, blockY))
-                blockX--;
-            if (key == 'd' && !collision(blockX + 1, blockY))
-                blockX++;
-            if (key == 's' && !collision(blockX, blockY + 1))
-                blockY++;
+    for(int i=0;i<4;i++) {
+        for(int j=0;j<4;j++) {
+            rotated[j][3-i] = current[i][j];
+        }
+    }
+
+    if(!collision(currentX, currentY, rotated)) {
+        for(int i=0;i<4;i++)
+            for(int j=0;j<4;j++)
+                current[i][j] = rotated[i][j];
+    }
+}
+
+void draw() {
+    clearScreen();
+
+    printf("Score: %d\n", score);
+
+    for(int i=0;i<HEIGHT;i++) {
+        printf("|");
+
+        for(int j=0;j<WIDTH;j++) {
+            int filled = board[i][j];
+
+            for(int pi=0;pi<4;pi++) {
+                for(int pj=0;pj<4;pj++) {
+                    if(current[pi][pj]) {
+                        if(i == currentY + pi &&
+                           j == currentX + pj)
+                            filled = 1;
+                    }
+                }
+            }
+
+            printf(filled ? "[]" : " .");
         }
 
-        // Move down
-        if (!collision(blockX, blockY + 1)) {
-            blockY++;
-        } else {
-            placeBlock();
-            clearLines();
-            blockX = WIDTH / 2 - 1;
-            blockY = 0;
+        printf("|\n");
+    }
 
-            if (collision(blockX, blockY)) {
-                printf("Game Over!\n");
-                break;
+    for(int i=0;i<WIDTH*2+2;i++)
+        printf("-");
+    printf("\n");
+}
+
+void enableRawMode() {
+    struct termios t;
+    tcgetattr(STDIN_FILENO, &t);
+    t.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &t);
+}
+
+int kbhit() {
+    struct timeval tv = {0L,0L};
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+    return select(STDIN_FILENO+1, &fds, NULL, NULL, &tv);
+}
+
+int getch() {
+    unsigned char c;
+    if(read(STDIN_FILENO, &c, 1) < 0)
+        return -1;
+    return c;
+}
+//daca am ajuns la 5000 de puncte, pot elimina un patratel din piesa
+void removeOneBlock() {
+    for(int i = 0; i < 4; i++) {
+        for(int j = 0; j < 4; j++) {
+            if(current[i][j]) {
+                current[i][j] = 0;
+                return;
             }
         }
     }
+}
+int main() {
+    srand(time(NULL));
+    enableRawMode();
+    spawnPiece();
+
+    int gameOver = 0;
+
+    while(!gameOver) {
+        draw();
+
+        usleep(250000);
+
+        if(kbhit()) {
+            int c = getch();
+
+            if(c == 27) {
+                getch();
+
+                switch(getch()) {
+                    case 'A': // UP
+                        rotatePiece();
+                        break;
+
+                    case 'B': // DOWN
+                        if(!collision(currentX, currentY+1, current))
+                            currentY++;
+                        break;
+
+                    case 'C': // RIGHT
+                        if(!collision(currentX+1, currentY, current))
+                            currentX++;
+                        break;
+
+                    case 'D': // LEFT
+                        if(!collision(currentX-1, currentY, current))
+                            currentX--;
+                        break;
+                }
+            }
+        }
+
+        if(!collision(currentX, currentY+1, current)) {
+            currentY++;
+        } else {
+            placePiece();
+            clearLines();
+            spawnPiece();
+
+            /*tetris normal
+            if(collision(currentX, currentY, current)) {
+                gameOver = 1;
+            }*/
+
+            if(collision(currentX, currentY, current)) {
+
+    // Regula specială la 500 puncte
+    if(score >= 500 && !secondChanceUsed) {
+
+        draw();
+        printf("\nSECOND CHANCE!\n");
+        printf("Press SPACE to remove one block...\n");
+
+        while(1) {
+            int c = getch();
+
+            if(c == ' ') {
+                removeOneBlock();
+                secondChanceUsed = 1;
+
+                // verificăm dacă acum mai există coliziune
+                if(!collision(currentX, currentY, current)) {
+                    break;
+                } else {
+                    gameOver = 1;
+                    break;
+                }
+            }
+        }
+
+    } else {
+        gameOver = 1;
+    }
+}
+        }
+    }
+
+    printf("\nGAME OVER!\n");
+    printf("Final Score: %d\n", score);
 
     return 0;
 }
